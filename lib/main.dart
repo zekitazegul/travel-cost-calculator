@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'services/travel_cost_api.dart';
+import 'services/navigation_service.dart';
 
 void main() {
   runApp(const TravelCostCalculatorApp());
@@ -399,6 +400,93 @@ class _CalculatorPageState extends State<CalculatorPage> {
     }
   }
 
+  Future<void> _openGoogleMaps() async {
+    if (!hasResult || routeAddresses.length < 2) {
+      return;
+    }
+
+    final destination = routeAddresses.last;
+
+    final waypoints = routeAddresses
+        .sublist(1, routeAddresses.length - 1)
+        .where((address) => address.trim().isNotEmpty)
+        .toList();
+
+    final opened = await NavigationService.openGoogleMaps(
+      originAddress:
+          isUsingCurrentLocation ? null : routeAddresses.first,
+      originCoordinate:
+          isUsingCurrentLocation ? currentLocation : null,
+      destinationAddress: destination,
+      waypoints: waypoints,
+    );
+
+    if (!mounted) return;
+
+    if (!opened) {
+      _showError(
+        'Unable to open Google Maps.',
+      );
+    }
+  }
+
+  Future<void> _openWaze() async {
+    if (!hasResult || routeAddresses.length < 2) {
+      return;
+    }
+
+    final hasStops = routeAddresses.length > 2;
+
+    final opened = await NavigationService.openWaze(
+      destinationAddress: routeAddresses.last,
+    );
+
+    if (!mounted) return;
+
+    if (!opened) {
+      _showError(
+        'Unable to open Waze.',
+      );
+      return;
+    }
+
+    if (hasStops) {
+      _showMessage(
+        'Waze opens the final destination. '
+        'Your intermediate stops are not transferred.',
+      );
+    }
+  }
+
+  Future<void> _openAppleMaps() async {
+    if (!hasResult || routeAddresses.length < 2) {
+      return;
+    }
+
+    final destination = routeAddresses.last;
+
+    final waypoints = routeAddresses
+        .sublist(1, routeAddresses.length - 1)
+        .where((address) => address.trim().isNotEmpty)
+        .toList();
+
+    final opened = await NavigationService.openAppleMaps(
+      sourceAddress:
+          isUsingCurrentLocation ? null : routeAddresses.first,
+      sourceCoordinate:
+          isUsingCurrentLocation ? currentLocation : null,
+      destinationAddress: destination,
+      waypoints: waypoints,
+    );
+
+    if (!mounted) return;
+
+    if (!opened) {
+      _showError(
+        'Unable to open Apple Maps.',
+      );
+    }
+  }
   void _showError(String message) {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -781,6 +869,40 @@ class _CalculatorPageState extends State<CalculatorPage> {
                   isSharing ? 'Sharing...' : 'Share Result',
                 ),
               ),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 20),
+              const Text(
+                'Navigate Route',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _openGoogleMaps,
+                    icon: const Icon(Icons.map_outlined),
+                    label: const Text('Google Maps'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _openWaze,
+                    icon: const Icon(Icons.navigation_outlined),
+                    label: const Text('Waze'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _openAppleMaps,
+                    icon: const Icon(Icons.map),
+                    label: const Text('Apple Maps'),
+                  ),
+                ],
+              ),
             ],
           ],
         ),
@@ -1116,3 +1238,5 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
+
+
