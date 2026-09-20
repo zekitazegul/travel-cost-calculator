@@ -1,4 +1,6 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'services/travel_cost_api.dart';
@@ -70,6 +72,11 @@ class _CalculatorPageState extends State<CalculatorPage> {
 
   bool isCalculating = false;
   bool hasResult = false;
+  bool isUsingCurrentLocation = false;
+  bool isGettingLocation = false;
+  bool isSharing = false;
+
+  Coordinate? currentLocation;
 
   @override
   void initState() {
@@ -121,6 +128,92 @@ class _CalculatorPageState extends State<CalculatorPage> {
     });
   }
 
+  Future<void> _useCurrentLocation() async {
+    if (isGettingLocation || isCalculating) {
+      return;
+    }
+
+    setState(() {
+      isGettingLocation = true;
+    });
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+
+      if (!serviceEnabled) {
+        _showError(
+          'Location services are disabled. Please enable location services and try again.',
+        );
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied) {
+        _showError(
+          'Location permission was denied. You can enter the start address manually.',
+        );
+        return;
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        _showError(
+          'Location permission is permanently denied. Please enable it in your device settings.',
+        );
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        currentLocation = Coordinate(
+          lat: position.latitude,
+          lon: position.longitude,
+        );
+        isUsingCurrentLocation = true;
+        startController.clear();
+        hasResult = false;
+      });
+
+      _showMessage('Current location selected.');
+    } catch (error) {
+      if (!mounted) return;
+
+      _showError(
+        'Unable to get your current location. '
+        'Please enter the start address manually.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isGettingLocation = false;
+        });
+      }
+    }
+  }
+
+  void _useManualStartAddress() {
+    if (isCalculating || isGettingLocation) {
+      return;
+    }
+
+    setState(() {
+      isUsingCurrentLocation = false;
+      currentLocation = null;
+      hasResult = false;
+    });
+  }
+
   Future<void> calculateRoute() async {
     final startAddress = startController.text.trim();
     final destinationAddress = destinationController.text.trim();
@@ -129,8 +222,17 @@ class _CalculatorPageState extends State<CalculatorPage> {
       priceController.text.replaceAll(',', '.').trim(),
     );
 
-    if (startAddress.isEmpty) {
-      _showError('Please enter a start address.');
+    if (!isUsingCurrentLocation && startAddress.isEmpty) {
+      _showError(
+        'Please enter a start address or use your current location.',
+      );
+      return;
+    }
+
+    if (isUsingCurrentLocation && currentLocation == null) {
+      _showError(
+        'Please select your current location again.',
+      );
       return;
     }
 
@@ -164,17 +266,33 @@ class _CalculatorPageState extends State<CalculatorPage> {
 
     try {
       final addresses = <String>[
-        startAddress,
+        if (isUsingCurrentLocation)
+          'Current location'
+        else
+          startAddress,
         ...stopAddresses,
         destinationAddress,
       ];
 
       final coordinates = <Coordinate>[];
 
-      for (final address in addresses) {
+      if (isUsingCurrentLocation) {
+        coordinates.add(currentLocation!);
+      } else {
+        coordinates.add(
+          await TravelCostApi.geocode(startAddress),
+        );
+      }
+
+      for (final address in stopAddresses) {
         final coordinate = await TravelCostApi.geocode(address);
         coordinates.add(coordinate);
       }
+
+      final destinationCoordinate =
+          await TravelCostApi.geocode(destinationAddress);
+
+      coordinates.add(destinationCoordinate);
 
       final route = await TravelCostApi.calculateRoute(coordinates);
 
@@ -203,7 +321,94 @@ class _CalculatorPageState extends State<CalculatorPage> {
     }
   }
 
+  Future<void> _shareResult() async {
+    if (!hasResult || isSharing) {
+      return;
+    }
+
+    setState(() {
+      isSharing = true;
+    });
+
+    try {
+      final buffer = StringBuffer();
+
+      buffer.writeln('Travel Cost Calculator');
+      buffer.writeln();
+      buffer.writeln('Route:');
+
+      for (var index = 0; index < routeAddresses.length; index++) {
+        final address = routeAddresses[index];
+
+        if (index == 0) {
+          buffer.writeln('Start: $address');
+        } else if (index == routeAddresses.length - 1) {
+          buffer.writeln('Destination: $address');
+        } else {
+          buffer.writeln('Stop $index: $address');
+        }
+      }
+
+      buffer.writeln();
+      buffer.writeln(
+        'Distance: ${totalDistance.toStringAsFixed(1)} km',
+      );
+      buffer.writeln(
+        'Travel time: ${_formatDuration(durationMinutes)}',
+      );
+
+      final price = double.tryParse(
+        priceController.text.replaceAll(',', '.').trim(),
+      );
+
+      if (price != null) {
+        buffer.writeln(
+          'Rate: €${price.toStringAsFixed(2)}/km',
+        );
+      }
+
+      buffer.writeln(
+        'Total cost: €${totalCost.toStringAsFixed(2)}',
+      );
+
+      final shareResult = await SharePlus.instance.share(
+        ShareParams(
+          text: buffer.toString(),
+          title: 'Travel Cost Calculator',
+          subject: 'Travel Cost Calculation',
+        ),
+      );
+
+      if (!mounted) return;
+
+      if (shareResult.status == ShareResultStatus.success) {
+        _showMessage('Result shared successfully.');
+      }
+    } catch (error) {
+      if (!mounted) return;
+
+      _showError(
+        'Unable to share the result. Please try again.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSharing = false;
+        });
+      }
+    }
+  }
+
   void _showError(String message) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+      ),
+    );
+  }
+
+  void _showMessage(String message) {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -325,13 +530,89 @@ class _CalculatorPageState extends State<CalculatorPage> {
             const SizedBox(height: 20),
             TextField(
               controller: startController,
+              enabled: !isUsingCurrentLocation &&
+                  !isCalculating &&
+                  !isGettingLocation,
+              onChanged: (_) {
+                if (isUsingCurrentLocation) {
+                  setState(() {
+                    isUsingCurrentLocation = false;
+                    currentLocation = null;
+                    hasResult = false;
+                  });
+                }
+              },
               decoration: const InputDecoration(
                 labelText: 'Start address',
                 hintText: 'Enter starting address',
                 prefixIcon: Icon(Icons.trip_origin),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: isCalculating || isGettingLocation
+                        ? null
+                        : _useCurrentLocation,
+                    icon: isGettingLocation
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(Icons.my_location),
+                    label: Text(
+                      isGettingLocation
+                          ? 'Getting location...'
+                          : 'Use current location',
+                    ),
+                  ),
+                ),
+                if (isUsingCurrentLocation) ...[
+                  const SizedBox(width: 12),
+                  IconButton(
+                    tooltip: 'Use manual start address',
+                    onPressed: isCalculating || isGettingLocation
+                        ? null
+                        : _useManualStartAddress,
+                    icon: const Icon(Icons.edit_location_alt_outlined),
+                  ),
+                ],
+              ],
+            ),
+            if (isUsingCurrentLocation) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.indigo.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.location_on,
+                      color: Colors.indigo.shade700,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Your current location will be used as the start point.',
+                        style: TextStyle(
+                          color: Colors.indigo.shade900,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
             ...List.generate(
               stopControllers.length,
               (index) => Padding(
@@ -483,6 +764,22 @@ class _CalculatorPageState extends State<CalculatorPage> {
                     Icons.euro,
                   ),
                 ],
+              ),
+              const SizedBox(height: 28),
+              OutlinedButton.icon(
+                onPressed: isSharing ? null : _shareResult,
+                icon: isSharing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(Icons.share_outlined),
+                label: Text(
+                  isSharing ? 'Sharing...' : 'Share Result',
+                ),
               ),
             ],
           ],
@@ -819,9 +1116,3 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
-
-
-
-
-
-
