@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const TravelCostCalculatorApp());
@@ -64,28 +63,6 @@ class _CalculatorPageState extends State<CalculatorPage> {
   double totalCost = 0.0;
 
   @override
-  void initState() {
-    super.initState();
-    _loadSettings();
-  }
-
-  Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    final savedStartAddress =
-        prefs.getString('default_start_address') ?? '';
-    final savedPrice =
-        prefs.getDouble('price_per_km') ?? 0.25;
-
-    if (!mounted) return;
-
-    setState(() {
-      startController.text = savedStartAddress;
-      priceController.text = savedPrice.toStringAsFixed(2);
-    });
-  }
-
-  @override
   void dispose() {
     startController.dispose();
     destinationController.dispose();
@@ -135,16 +112,6 @@ class _CalculatorPageState extends State<CalculatorPage> {
     });
   }
 
-  Future<void> _openSettings() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const SettingsPage(),
-      ),
-    );
-
-    await _loadSettings();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -158,7 +125,7 @@ class _CalculatorPageState extends State<CalculatorPage> {
         actions: [
           IconButton(
             tooltip: 'Settings',
-            onPressed: _openSettings,
+            onPressed: () {},
             icon: const Icon(Icons.settings_outlined),
           ),
         ],
@@ -414,200 +381,6 @@ class _CalculatorPageState extends State<CalculatorPage> {
           label: const Text('Support the Developer'),
         ),
       ],
-    );
-  }
-}
-
-class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
-
-  @override
-  State<SettingsPage> createState() => _SettingsPageState();
-}
-
-class _SettingsPageState extends State<SettingsPage> {
-  final TextEditingController startAddressController =
-      TextEditingController();
-
-  final TextEditingController priceController =
-      TextEditingController();
-
-  bool isSaving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadSettings();
-  }
-
-  Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    final savedStartAddress =
-        prefs.getString('default_start_address') ?? '';
-
-    final savedPrice =
-        prefs.getDouble('price_per_km') ?? 0.25;
-
-    if (!mounted) return;
-
-    setState(() {
-      startAddressController.text = savedStartAddress;
-      priceController.text = savedPrice.toStringAsFixed(2);
-    });
-  }
-
-  Future<void> _saveSettings() async {
-    final price = double.tryParse(
-      priceController.text.replaceAll(',', '.'),
-    );
-
-    if (price == null || price < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please enter a valid price per kilometer.',
-          ),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      isSaving = true;
-    });
-
-    final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setString(
-      'default_start_address',
-      startAddressController.text.trim(),
-    );
-
-    await prefs.setDouble(
-      'price_per_km',
-      price,
-    );
-
-    if (!mounted) return;
-
-    setState(() {
-      isSaving = false;
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Settings saved.'),
-      ),
-    );
-
-    Navigator.of(context).pop();
-  }
-
-  @override
-  void dispose() {
-    startAddressController.dispose();
-    priceController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Settings',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 700,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Card(
-                  elevation: 0,
-                  color: Colors.white,
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Default Route Settings',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'These values will be used automatically when you start a new calculation.',
-                          style: TextStyle(
-                            color: Colors.grey.shade700,
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        TextField(
-                          controller: startAddressController,
-                          decoration: const InputDecoration(
-                            labelText: 'Default start address',
-                            hintText: 'e.g. Poortugaal, Netherlands',
-                            prefixIcon: Icon(Icons.home_outlined),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        TextField(
-                          controller: priceController,
-                          keyboardType:
-                              const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Default price per kilometer',
-                            prefixIcon: Icon(Icons.euro),
-                            suffixText: '/ km',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  height: 54,
-                  child: FilledButton.icon(
-                    onPressed: isSaving ? null : _saveSettings,
-                    icon: isSaving
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : const Icon(Icons.save_outlined),
-                    label: Text(
-                      isSaving ? 'Saving...' : 'Save Settings',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
