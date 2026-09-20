@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'services/travel_cost_api.dart';
@@ -1036,9 +1037,36 @@ class _CalculatorPageState extends State<CalculatorPage> {
         ),
         const SizedBox(height: 8),
         TextButton.icon(
-          onPressed: () {},
-          icon: const Icon(Icons.coffee_outlined),
-          label: const Text('Support the Developer'),
+          onPressed: () async {
+            final uri = Uri.parse(
+              'https://ko-fi.com/zetasoft',
+            );
+
+            try {
+              final opened = await launchUrl(
+                uri,
+                mode: LaunchMode.externalApplication,
+              );
+
+              if (!opened && mounted) {
+                _showError(
+                  'Unable to open Ko-fi.',
+                );
+              }
+            } catch (_) {
+              if (mounted) {
+                _showError(
+                  'Unable to open Ko-fi.',
+                );
+              }
+            }
+          },
+          icon: const Icon(
+            Icons.coffee_outlined,
+          ),
+          label: const Text(
+            'Support the Developer',
+          ),
         ),
       ],
     );
@@ -1238,5 +1266,7 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
+
+
 
 
