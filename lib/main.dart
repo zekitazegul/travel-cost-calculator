@@ -1026,49 +1026,90 @@ class _CalculatorPageState extends State<CalculatorPage> {
   }
 
   Widget _buildSupportSection() {
-    return Column(
-      children: [
-        Text(
-          'Travel Cost Calculator is free to use.',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.grey.shade700,
-          ),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 20,
+        vertical: 18,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.brown.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.brown.shade100,
         ),
-        const SizedBox(height: 8),
-        TextButton.icon(
-          onPressed: () async {
-            final uri = Uri.parse(
-              'https://www.ing.nl/payreq/m/?trxid=wsmGphDfkuMkMXH6kARq3iOeNVkvhj6n',
-            );
-
-            try {
-              final opened = await launchUrl(
-                uri,
-                mode: LaunchMode.externalApplication,
-              );
-
-              if (!opened && mounted) {
-                _showError(
-                  'Unable to open Ko-fi.',
-                );
-              }
-            } catch (_) {
-              if (mounted) {
-                _showError(
-                  'Unable to open Ko-fi.',
-                );
-              }
-            }
-          },
-          icon: const Icon(
-            Icons.coffee_outlined,
+      ),
+      child: Column(
+        children: [
+          Text(
+            'Travel Cost Calculator is free to use.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontSize: 15,
+            ),
           ),
-          label: const Text(
-            'Support the Developer',
+          const SizedBox(height: 6),
+          Text(
+            'If you find it useful, you can support its development.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: 14,
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () async {
+                final uri = Uri.parse(
+                  'https://www.ing.nl/payreq/m/?trxid=wsmGphDfkuMkMXH6kARq3iOeNVkvhj6n',
+                );
+
+                try {
+                  final opened = await launchUrl(
+                    uri,
+                    mode: LaunchMode.externalApplication,
+                  );
+
+                  if (!opened && mounted) {
+                    _showError(
+                      'Unable to open payment page.',
+                    );
+                  }
+                } catch (_) {
+                  if (mounted) {
+                    _showError(
+                      'Unable to open payment page.',
+                    );
+                  }
+                }
+              },
+              icon: const Icon(
+                Icons.coffee_outlined,
+                size: 32,
+              ),
+              label: const Text(
+                'Support the Developer',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 14,
+                  horizontal: 20,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1266,4 +1307,5 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
+
 
