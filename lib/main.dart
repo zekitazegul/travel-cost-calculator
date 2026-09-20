@@ -1039,7 +1039,7 @@ class _CalculatorPageState extends State<CalculatorPage> {
         TextButton.icon(
           onPressed: () async {
             final uri = Uri.parse(
-              'https://ko-fi.com/zetasoft',
+              'https://www.ing.nl/payreq/m/?trxid=wsmGphDfkuMkMXH6kARq3iOeNVkvhj6n',
             );
 
             try {
@@ -1266,7 +1266,4 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
-
-
-
 

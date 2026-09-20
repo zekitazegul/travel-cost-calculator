@@ -81173,7 +81173,7 @@ $S:0}
 A.aew.prototype={
 $0(){var s=0,r=A.K(t.H),q=1,p=[],o=this,n,m,l,k,j
 var $async$$0=A.L(function(a,b){if(a===1){p.push(b)
-s=q}for(;;)switch(s){case 0:k=A.es("https://ko-fi.com/zetasoft",0,null)
+s=q}for(;;)switch(s){case 0:k=A.es("https://www.ing.nl/payreq/m/?trxid=wsmGphDfkuMkMXH6kARq3iOeNVkvhj6n",0,null)
 q=3
 s=6
 return A.M(A.US(k,B.nA),$async$$0)
