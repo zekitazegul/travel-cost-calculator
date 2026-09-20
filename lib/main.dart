@@ -1,5 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'services/travel_cost_api.dart';
 
 void main() {
   runApp(const TravelCostCalculatorApp());
@@ -62,6 +64,12 @@ class _CalculatorPageState extends State<CalculatorPage> {
 
   double totalDistance = 0.0;
   double totalCost = 0.0;
+  double durationMinutes = 0.0;
+
+  List<String> routeAddresses = [];
+
+  bool isCalculating = false;
+  bool hasResult = false;
 
   @override
   void initState() {
@@ -101,6 +109,7 @@ class _CalculatorPageState extends State<CalculatorPage> {
   void addStop() {
     setState(() {
       stopControllers.add(TextEditingController());
+      hasResult = false;
     });
   }
 
@@ -108,31 +117,99 @@ class _CalculatorPageState extends State<CalculatorPage> {
     setState(() {
       stopControllers[index].dispose();
       stopControllers.removeAt(index);
+      hasResult = false;
     });
   }
 
-  void calculateDemo() {
+  Future<void> calculateRoute() async {
+    final startAddress = startController.text.trim();
+    final destinationAddress = destinationController.text.trim();
+
     final price = double.tryParse(
-      priceController.text.replaceAll(',', '.'),
+      priceController.text.replaceAll(',', '.').trim(),
     );
 
-    if (price == null || price < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a valid price per kilometer.'),
-        ),
-      );
+    if (startAddress.isEmpty) {
+      _showError('Please enter a start address.');
       return;
     }
 
-    // Temporary demo distance.
-    // Real OpenStreetMap routing will replace this later.
-    const demoDistance = 0.0;
+    if (destinationAddress.isEmpty) {
+      _showError('Please enter a destination address.');
+      return;
+    }
+
+    if (price == null || price < 0) {
+      _showError('Please enter a valid price per kilometer.');
+      return;
+    }
+
+    final stopAddresses = <String>[];
+
+    for (var i = 0; i < stopControllers.length; i++) {
+      final address = stopControllers[i].text.trim();
+
+      if (address.isEmpty) {
+        _showError('Please enter an address for Stop ${i + 1}.');
+        return;
+      }
+
+      stopAddresses.add(address);
+    }
 
     setState(() {
-      totalDistance = demoDistance;
-      totalCost = totalDistance * price;
+      isCalculating = true;
+      hasResult = false;
     });
+
+    try {
+      final addresses = <String>[
+        startAddress,
+        ...stopAddresses,
+        destinationAddress,
+      ];
+
+      final coordinates = <Coordinate>[];
+
+      for (final address in addresses) {
+        final coordinate = await TravelCostApi.geocode(address);
+        coordinates.add(coordinate);
+      }
+
+      final route = await TravelCostApi.calculateRoute(coordinates);
+
+      if (!mounted) return;
+
+      setState(() {
+        routeAddresses = List<String>.from(addresses);
+        totalDistance = route.distanceKm;
+        durationMinutes = route.durationMinutes;
+        totalCost = totalDistance * price;
+        hasResult = true;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      _showError(
+        'Unable to calculate the route. '
+        'Please check the addresses and try again.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isCalculating = false;
+        });
+      }
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+      ),
+    );
   }
 
   Future<void> _openSettings() async {
@@ -143,6 +220,22 @@ class _CalculatorPageState extends State<CalculatorPage> {
     );
 
     await _loadSettings();
+  }
+
+  String _formatDuration(double minutes) {
+    final totalMinutes = minutes.round();
+    final hours = totalMinutes ~/ 60;
+    final remainingMinutes = totalMinutes % 60;
+
+    if (hours == 0) {
+      return '$remainingMinutes min';
+    }
+
+    if (remainingMinutes == 0) {
+      return '$hours h';
+    }
+
+    return '$hours h $remainingMinutes min';
   }
 
   @override
@@ -158,7 +251,7 @@ class _CalculatorPageState extends State<CalculatorPage> {
         actions: [
           IconButton(
             tooltip: 'Settings',
-            onPressed: _openSettings,
+            onPressed: isCalculating ? null : _openSettings,
             icon: const Icon(Icons.settings_outlined),
           ),
         ],
@@ -251,7 +344,8 @@ class _CalculatorPageState extends State<CalculatorPage> {
                     prefixIcon: const Icon(Icons.location_on_outlined),
                     suffixIcon: IconButton(
                       tooltip: 'Remove stop',
-                      onPressed: () => removeStop(index),
+                      onPressed:
+                          isCalculating ? null : () => removeStop(index),
                       icon: const Icon(Icons.close),
                     ),
                   ),
@@ -259,7 +353,7 @@ class _CalculatorPageState extends State<CalculatorPage> {
               ),
             ),
             OutlinedButton.icon(
-              onPressed: addStop,
+              onPressed: isCalculating ? null : addStop,
               icon: const Icon(Icons.add),
               label: const Text('Add stop'),
             ),
@@ -316,11 +410,19 @@ class _CalculatorPageState extends State<CalculatorPage> {
     return SizedBox(
       height: 54,
       child: FilledButton.icon(
-        onPressed: calculateDemo,
-        icon: const Icon(Icons.calculate_outlined),
-        label: const Text(
-          'Calculate Route',
-          style: TextStyle(
+        onPressed: isCalculating ? null : calculateRoute,
+        icon: isCalculating
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                ),
+              )
+            : const Icon(Icons.calculate_outlined),
+        label: Text(
+          isCalculating ? 'Calculating...' : 'Calculate Route',
+          style: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w700,
           ),
@@ -336,32 +438,138 @@ class _CalculatorPageState extends State<CalculatorPage> {
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
               'Result',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _resultItem(
-                  'Distance',
-                  '${totalDistance.toStringAsFixed(1)} km',
-                  Icons.route,
+            if (!hasResult)
+              Text(
+                'Enter a route and calculate to see the result.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey.shade700,
                 ),
-                _resultItem(
-                  'Total cost',
-                  '€${totalCost.toStringAsFixed(2)}',
-                  Icons.euro,
+              )
+            else ...[
+              _buildRouteSummary(),
+              const SizedBox(height: 28),
+              const Divider(),
+              const SizedBox(height: 24),
+              Wrap(
+                alignment: WrapAlignment.spaceEvenly,
+                spacing: 40,
+                runSpacing: 24,
+                children: [
+                  _resultItem(
+                    'Distance',
+                    '${totalDistance.toStringAsFixed(1)} km',
+                    Icons.route,
+                  ),
+                  _resultItem(
+                    'Travel time',
+                    _formatDuration(durationMinutes),
+                    Icons.schedule_outlined,
+                  ),
+                  _resultItem(
+                    'Total cost',
+                    '€${totalCost.toStringAsFixed(2)}',
+                    Icons.euro,
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRouteSummary() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Route',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 12),
+        for (int index = 0; index < routeAddresses.length; index++)
+          _buildRouteAddress(
+            routeAddresses[index],
+            index,
+            routeAddresses.length,
+          ),
+      ],
+    );
+  }
+
+  Widget _buildRouteAddress(
+    String address,
+    int index,
+    int totalAddresses,
+  ) {
+    final bool isStart = index == 0;
+    final bool isDestination = index == totalAddresses - 1;
+
+    final IconData icon;
+    final String label;
+
+    if (isStart) {
+      icon = Icons.location_on;
+      label = 'Start';
+    } else if (isDestination) {
+      icon = Icons.flag;
+      label = 'Destination';
+    } else {
+      icon = Icons.stop_circle_outlined;
+      label = 'Stop $index';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            size: 22,
+            color: Colors.indigo,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  address,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -611,3 +819,9 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
+
+
+
+
+
+
